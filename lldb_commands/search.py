@@ -39,8 +39,9 @@ import ds
 import optparse
 import lldb.utils.symbolication
 
-
 s = ""
+
+
 def __lldb_init_module(debugger, internal_dict):
     debugger.HandleCommand('command script add -f search.search search -h "Searches heap for instances"')
 
@@ -56,16 +57,16 @@ def search(debugger, command, exe_ctx, result, internal_dict):
 Examples:
 
     # Find all UIViews and subclasses of UIViews
-    find UIView
+    search UIView
 
     # Find all UIStatusBar instances
-    find UIStatusBar
+    search UIStatusBar
 
     # Find all UIViews, ignore subclasses
-    find UIView  -e
+    search UIView  -e
 
     # Find all instances of UIViews (and subclasses) where tag == 5
-    find UIView -c "[obj tag] == 5"
+    search UIView -c "[obj tag] == 5"
     '''
 
     if not ds.isProcStopped():
@@ -81,11 +82,10 @@ Examples:
         return
 
     if not args:
-        result.SetError('Usage: find NSObjectSubclass\n\nUse \'help find\' for more details')
+        result.SetError('Usage: search UIView\n\nUse \'help search\' for more details')
         return
 
-    clean_command = ('').join(args)
-    
+    clean_command = ''.join(args)
 
     res = lldb.SBCommandReturnObject()
     interpreter = debugger.GetCommandInterpreter()
@@ -99,15 +99,16 @@ Examples:
             return
         options.module = generate_module_search_sections_string(module, target)
 
-
     if options.pointer_reference:
         objectiveC_class = '(uintptr_t *){}'.format(clean_command)
-        if options.pointer_reference and (options.exact_match or options.module or options.module or options.condition or options.perform_action):
+        if options.pointer_reference and (
+                options.exact_match or options.module or options.module or options.condition or options.perform_action):
             result.SetError("Can only use the --pointer_reference with --barebones")
     else:
-        
-        interpreter.HandleCommand('expression -lobjc -O -- (Class)NSClassFromString(@\"{}\")'.format(clean_command), res)
-        if not res.Succeeded() or  'nil' in res.GetOutput():
+
+        interpreter.HandleCommand('expression -lobjc -O -- (Class)NSClassFromString(@\"{}\")'.format(clean_command),
+                                  res)
+        if not res.Succeeded() or 'nil' in res.GetOutput():
             result.SetError('Can\'t find class named "{}". Womp womp...'.format(clean_command))
             return
         objectiveC_class = 'NSClassFromString(@"{}")'.format(clean_command)
@@ -119,12 +120,12 @@ Examples:
     expr_options = lldb.SBExpressionOptions()
     expr_options.SetIgnoreBreakpoints(True);
     expr_options.SetFetchDynamicValue(lldb.eNoDynamicValues);
-    expr_options.SetTimeoutInMicroSeconds (30*1000*1000) # 30 second timeout
-    expr_options.SetTryAllThreads (False)
+    expr_options.SetTimeoutInMicroSeconds(30 * 1000 * 1000)  # 30 second timeout
+    expr_options.SetTryAllThreads(False)
     expr_options.SetTrapExceptions(False)
     expr_options.SetUnwindOnError(True)
     expr_options.SetGenerateDebugInfo(True)
-    expr_options.SetLanguage (lldb.eLanguageTypeObjC_plus_plus)
+    expr_options.SetLanguage(lldb.eLanguageTypeObjC_plus_plus)
     expr_options.SetCoerceResultToId(True)
     # expr_options.SetAutoApplyFixIts(True)
     frame = exe_ctx.frame
@@ -142,11 +143,11 @@ Examples:
     if not expr_sbvalue.error.success:
         result.SetError("\n**************************************\nerror: " + str(expr_sbvalue.error))
         return
-    
+
     val = lldb.value(expr_sbvalue)
     count = val.count.sbvalue.unsigned
     global s
-    s = val 
+    s = val
 
     if count > 100:
         result.AppendWarning('Exceeded 100 hits, try narrowing your search with the --condition option')
@@ -156,21 +157,24 @@ Examples:
         for i in range(count):
             v = val.values[i].sbvalue
             offset = val.offsets[i].sbvalue.unsigned
-            val_description = ds.attrStr(str(v.GetTypeName()), 'cyan') + ' [' + ds.attrStr(str(v.GetValue()), 'yellow')  + ']' + ' + '  + ds.attrStr(hex(offset), 'yellow')
+            val_description = ds.attrStr(str(v.GetTypeName()), 'cyan') + ' [' + ds.attrStr(str(v.GetValue()),
+                                                                                           'yellow') + ']' + ' + ' + ds.attrStr(
+                hex(offset), 'yellow')
             result.AppendMessage(val_description)
     else:
-	    if options.barebones:
-	        for i in range(count):
-	            v = val.values[i].sbvalue
-	            val_description = ds.attrStr(str(v.GetTypeName()), 'cyan') + ' [' + ds.attrStr(str(v.GetValue()), 'yellow')  + ']'
-	            result.AppendMessage(val_description)
-	    else:
-	        for i in range(count):
-	            v = val.values[i].sbvalue
-	            if not v.description:
-	                continue
-	            desc = v.description 
-	            result.AppendMessage(desc + '\n')
+        if options.barebones:
+            for i in range(count):
+                v = val.values[i].sbvalue
+                val_description = ds.attrStr(str(v.GetTypeName()), 'cyan') + ' [' + ds.attrStr(str(v.GetValue()),
+                                                                                               'yellow') + ']'
+                result.AppendMessage(val_description)
+        else:
+            for i in range(count):
+                v = val.values[i].sbvalue
+                if not v.description:
+                    continue
+                desc = v.description
+                result.AppendMessage(desc + '\n')
 
 
 def get_command_script(objectiveC_class, options):
@@ -227,9 +231,9 @@ _ds_context->results = (CFMutableSetRef)CFSetCreateMutable(0, maxresults, NULL);
 _ds_context->ptrRefResults = (CFMutableArrayRef)CFArrayCreateMutable(0, maxresults, NULL);
 _ds_context->classesSet = set;
 _ds_context->offsets = (int *)calloc(maxresults, sizeof(int));
-''' 
+'''
     if options.pointer_reference:
-        command_script += r'''_ds_context->pointerRef =  ''' + objectiveC_class + ';' # actually ptr address here
+        command_script += r'''_ds_context->pointerRef =  ''' + objectiveC_class + ';'  # actually ptr address here
     else:
         command_script += r'''_ds_context->query =  ''' + objectiveC_class + ';'
     command_script += r'''
@@ -300,7 +304,7 @@ for (unsigned i = 0; i < ___count; i++) {
 
 	        id obj = (__bridge id)(void *)potentialObject;
 
-	        if ((BOOL)[obj isProxy] && strchr((char*)[className UTF8String], '.') == 0) {
+	        if ((BOOL)[obj isProxy] && ![className containsString:@"."]) {
 	        	// printf("%s (debugging)\n", (char*)[className UTF8String]);
 	        	continue;
 	        }
@@ -327,8 +331,8 @@ for (unsigned i = 0; i < ___count; i++) {
     '''
     else:
         if options.exact_match:
-            command_script  += 'if ((int)[potentialClass isMemberOfClass:query]'
-        else: 
+            command_script += 'if ((int)[potentialClass isMemberOfClass:query]'
+        else:
             command_script += 'if ((int)[[potentialClass class] isSubclassOfClass:query]'
 
         if options.condition:
@@ -362,7 +366,7 @@ $LLDBHeapObjects lldbheap;
 lldbheap.values = (const void **)calloc(index, sizeof(id));
 CFSetGetValues(_ds_context->results, lldbheap.values);
 lldbheap.count = index;  
-''' 
+'''
     if options.pointer_reference:
         command_script += r'''
 lldbheap.offsets = _ds_context->offsets;
@@ -383,13 +387,12 @@ free(classes);'''
 
     '''
         command_script += options.perform_action + ' };\n (void)[CATransaction flush];'
-     
-     
+
     command_script += 'lldbheap;'
     return command_script
 
-def generate_module_search_sections_string(module, target):
 
+def generate_module_search_sections_string(module, target):
     returnString = r'''
     uintptr_t addr = (uintptr_t)potentialClass;
     if (!('''
@@ -410,6 +413,7 @@ def generate_module_search_sections_string(module, target):
 
     returnString += ')) { continue; }\n'
     return returnString
+
 
 def generate_option_parser():
     usage = "usage: %prog [options] NSObjectSubclass"

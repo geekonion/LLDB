@@ -2,10 +2,6 @@ command alias -H "Reload ~/.lldbinit" -h "Reload ~/.lldbinit" -- reload_lldbinit
 
 command regex -h "Regex search" -s "rlook UIViewController.viewDidLoad" -- rlook 's/(.+)/image lookup -rn %1/'
 
-command regex -h "List a directory from the process's perspective. Useful when working on an actual device." -s "ls /System/Library" -- ls 's/(.+)/po @import Foundation; NSError *err = nil; NSArray *arr = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:@"%1" error:&err]; id retValue = err ? [err localizedDescription] : [arr description]; retValue/
-
-command regex -h "List a directory from the process's perspective. Useful when working on an actual device." -s "la /System/Library" -- la 's/(.+)/po @import Foundation; NSError *err = nil; NSDictionary *arr = [[NSFileManager defaultManager] attributesOfItemAtPath:@"%1" error:&err]; id retValue = err ? [err localizedDescription] : [arr debugDescription]; retValue/
-
 command regex -h "Toggle view. Hides/Shows a view depending on it's current state. You don't need to resume LLDB to see changes" -s "tv 0xUIViewAddress" -- tv 's/(.+)/expression -l objc -O -- @import QuartzCore; [%1 setHidden:!(BOOL)[%1 isHidden]]; (void)[CATransaction flush];/'
 
 command regex  pprotocol 's/(.+)/expression -lobjc -O -- @import Foundation; NSMutableString *string = [NSMutableString string]; Protocol * prot = objc_getProtocol("%1"); [string appendFormat:@"\nProtocol: %s, %@\n", (char *)[prot name], (id)prot]; [string appendString:@"==========================================\n"]; for (int isRequired = 1; isRequired > -1; isRequired--) { [string appendFormat:@" (%@)\n", isRequired ? @"Required" : @"Optional"]; for (int isInstanceMethod = 0; isInstanceMethod < 2; isInstanceMethod++) { unsigned int ds_count = 0; struct objc_method_description * methods = (struct objc_method_description *)protocol_copyMethodDescriptionList(prot, (BOOL)isRequired, (BOOL)isInstanceMethod, &ds_count); for (int i = 0; i < ds_count; i++) { struct objc_method_description method = methods[i]; [string appendFormat:@"%@ %@, %s\n", isInstanceMethod ? @"-": @"+", NSStringFromSelector(method.name), method.types]; }}} string;/'
@@ -73,7 +69,7 @@ command regex msg_header_w -h "Dump the mach_msg_header_t in raw bytes" -- 's|(.
 
 # Jailbreak stuff
 
-command alias qqq process connect connect://localhost:1234
+command alias pcc process connect connect://localhost:12345
 
 
 

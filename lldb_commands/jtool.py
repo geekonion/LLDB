@@ -7,27 +7,36 @@ import shlex
 import optparse
 import subprocess
 
-ds_has_run_once = False
-ds_jtool_path = None
+ds_jtool_dict = {}
 base_address = None
 
-def makeSureEverythingIsOK(result):
-    global ds_has_run_once
-    global ds_jtool_path
-    global base_address
 
-    base_address = None
-    if ds_has_run_once is False:
+def makeSureEverythingIsOK(result, prog):
+    global ds_jtool_dict
+
+    ds_jtool_path = ds_jtool_dict.get(prog)
+    if not ds_jtool_path:
         # I'd expect jtool to be in /usr/local/bin/
         if "/usr/local/bin" not in os.environ["PATH"]:
             os.environ["PATH"] += os.pathsep + "/usr/local/bin/"
-        if subprocess.call(["/usr/bin/which", "jtool"], shell=False) != 0:
-            result.SetError("Can't find jtool in PATH or jtool isn't installed (http://www.newosxbook.com/tools/jtool.html), you can determine this in LLDB via \"(lldb) script import os; os.environ['PATH']\"\nYou can persist this via (lldb) script os.environ['PATH'] += os.pathsep + /path/to/jtool/folder")
+        if subprocess.call(["/usr/bin/which", prog], shell=False) != 0:
+            result.SetError("Can't find {prog} in PATH or {prog} isn't installed "
+                            "(http://www.newosxbook.com/tools/jtool.html), "
+                            "you can determine this in LLDB via \""
+                            "(lldb) script import os; os.environ['PATH']\"\n"
+                            "You can persist this via "
+                            "(lldb) script os.environ['PATH'] += os.pathsep + /path/to/{prog}/folder".
+                            format(prog=prog))
             return 1
 
-        ds_has_run_once = True
-        ds_jtool_path = subprocess.Popen(['/usr/bin/which', 'jtool'], shell=False, stdout=subprocess.PIPE).communicate()[0].rstrip('\n\r') 
+        ds_jtool_path = subprocess.Popen(['/usr/bin/which', prog],
+                                         shell=False,
+                                         stdout=subprocess.PIPE).communicate()[0].rstrip(b'\n\r').decode()
+        ds_jtool_dict[prog] = ds_jtool_path.replace('//', '/')
         return 0
+    else:
+        return 0
+
 
 def get_cputype_string(target, addr):
     global base_address
@@ -40,38 +49,52 @@ def get_cputype_string(target, addr):
 
     cpu_val = target.CreateValueFromAddress("__unused", target.ResolveLoadAddress(cputype_addr), int32_t_ptr_type)
     cputype = cpu_val.unsigned
-    if cputype == 16777223:
+    if cputype == 0x01000007:
         return "x86_64"
     elif cputype == 7:
         return "i386"
     elif cputype == 12:
         return "armv7"
-    elif cputype == 16777228:
+    elif cputype == 0x0100000c:
         return "arm64"
     else:
         print("Unknown cputype: {}", format(cputype))
         return None
 
-def __lldb_init_module(debugger, internal_dict):
-    debugger.HandleCommand(
-    'command script add -f jtool.handle_command jtool -h "wrapper for @Morpheus______\'s jtool"')
 
-def handle_command(debugger, command, exe_ctx, result, internal_dict):
-    '''
-    Documentation for how to use jtool goes here 
-    '''
-    if makeSureEverythingIsOK(result):
+def __lldb_init_module(debugger, internal_dict):
+    debugger.HandleCommand('command script add -f jtool.jtool jtool -h "wrapper for @Morpheus______\'s jtool"')
+    debugger.HandleCommand('command script add -f jtool.jtool2 jtool2 -h "wrapper for @Morpheus______\'s jtool2"')
+
+
+def jtool(debugger, command, exe_ctx, result, internal_dict):
+    """
+    Documentation for how to use jtool goes here
+    """
+    handle_command(command, exe_ctx, result, 'jtool')
+
+
+def jtool2(debugger, command, exe_ctx, result, internal_dict):
+    """
+    Documentation for how to use jtool2 goes here
+    """
+    handle_command(command, exe_ctx, result, 'jtool2')
+
+
+def handle_command(command, exe_ctx, result, prog):
+    if makeSureEverythingIsOK(result, prog):
         return
 
     target = exe_ctx.GetTarget()
     command_args = shlex.split(command, posix=False)
-    parser = generate_option_parser()
+    parser = generate_option_parser(prog)
     try:
         (options, args) = parser.parse_args(command_args)
     except:
         result.SetError(parser.usage)
         return
 
+    opts = generateOptionArgsFromOptions(options, prog)
     executablePath = None
     module = None
     addr = None
@@ -79,7 +102,8 @@ def handle_command(debugger, command, exe_ctx, result, internal_dict):
     if len(args) == 0:
         executablePath = target.GetExecutable().fullpath
         module = target.module[target.GetExecutable().fullpath]
-        result.AppendMessage("Inspecting main executable, {}{}{}".format("" if isXcode() else "\033[36m", module.GetFileSpec().basename, "" if isXcode() else "\033[0m"))
+        if len(opts) > 0:
+            result.AppendMessage("Inspecting main executable, {}{}{}".format("" if isXcode() else "\033[36m", module.GetFileSpec().basename, "" if isXcode() else "\033[0m"))
 
     if len(args) >= 1:
         module = target.module[args[0]]
@@ -96,17 +120,14 @@ def handle_command(debugger, command, exe_ctx, result, internal_dict):
                     result.SetError("Unable to find module \"{}\", use \"image list -f ModuleName\"".format(args[0]))
                     return 
 
-
             addr = target.ResolveLoadAddress(address)
             if module is None:
                 module = addr.GetModule()
                 result.AppendMessage("\"{}\" found in {}{}{}".format(args[0], "" if isXcode() else "\033[36m", module.GetFileSpec().basename, "" if isXcode() else "\033[0m"))
 
-
             if addr.module.IsValid() == False:
                 result.SetError("Unable to find module for address {}".format(hex(address)))
                 return
-
 
         if module is not None:
             executablePath = module.GetFileSpec().fullpath
@@ -119,50 +140,50 @@ def handle_command(debugger, command, exe_ctx, result, internal_dict):
         result.SetError("Unable to parse cputype, tell Derek about this")
         return
 
-
     proc_args = []
     if not isXcode():
         proc_args.append("JCOLOR=1")
 
-    global ds_jtool_path
+    global ds_jtool_dict
+    ds_jtool_path = ds_jtool_dict[prog]
     proc_args.append(ds_jtool_path)
-    proc_args.append("-arch")
-    proc_args.append(cputype_str)
-    proc_args.extend(generateOptionArgsFromOptions(options))
-    proc_args.append("\"{}\"".format(executablePath))
+    if len(opts) > 0:
+        if prog == 'jtool':
+            proc_args.append("-arch")
+            proc_args.append(cputype_str)
+        proc_args.extend(opts)
+        proc_args.append("\"{}\"".format(executablePath))
 
     if options.debug:
         # print (proc_args)
-        print (" ".join(proc_args))
+        print(" ".join(proc_args))
 
-    p = subprocess.Popen(" ".join(proc_args), shell=True, stdout=subprocess.PIPE)
-    output = p.communicate()
+    cmd = None
+    if len(proc_args) > 1:
+        cmd = ' '.join(proc_args)
+    else:
+        cmd = proc_args[0]
 
-    if output[1] is not None:
-        result.SetError("Error: {}".format(output[1]))
-        return
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    output, error = p.communicate()
+    code = p.wait()
 
-    # print "{}\n".format(module.) + output[0]
-
-    # offset 0xfeedfacf
-    regex1 = '(?<![oO]ffset\s)(0[xX][A-Za-z0-9]+)'
-
-    # 0000000100001fd0 t _main
-    regex2 = '(?<![oO]ffset\s)(0[xX][A-Za-z0-9]+)'
-    formatted_output = re.sub(regex1, repl, output[0])
-    result.AppendMessage(formatted_output)
-    # result.AppendMessage(output[0])
+    result.AppendMessage(output.decode())
+    if len(error) > 0:
+        result.SetError(error.decode())
 
 
-    # Uncomment if you are expecting at least one argument
-    # clean_command = shlex.split(args[0])[0]
-    # result.AppendMessage('Hello! the jtool command is working! arg1 is {}'.format(args))
-
-
-def generateOptionArgsFromOptions(options):
+def generateOptionArgsFromOptions(options, prog):
     retOpts = []
     if options.opt_h:
         retOpts.append("-h")
+
+    if prog == 'jtool2':
+        if options.opt_help:
+            retOpts.append("--help")
+
+    if options.opt_e:
+        retOpts.append("--ent")
 
     if options.opt_f:
         retOpts.append("-f")
@@ -179,25 +200,41 @@ def generateOptionArgsFromOptions(options):
     if options.opt_S:
         retOpts.append("-S")
 
+    if options.opt_s:
+        retOpts.append("--sig")
+
     # if options.opt_bind:
     #     retOpts.append("-bind")
 
     return retOpts
 
 
-def generate_option_parser():
-    usage = "usage: %prog [options] TODO Description Here :]"
-    parser = optparse.OptionParser(usage=usage, prog="jtool", add_help_option=False)
+def generate_option_parser(prog):
+    usage = "usage: %prog [options]"
+    parser = optparse.OptionParser(usage=usage, prog=prog)
     # parser.add_option("-m", 
     #                   action="store_true",
     #                   default=None,
     #                   dest="module",
     #                   help="This is a placeholder option to show you how to use options with strings")
-    parser.add_option("-h", "--opt_h", 
+    parser.add_option("", "--h",
                       action="store_true",
                       default=False,
                       dest="opt_h",
                       help="print header (ELF or Mach-O)")
+
+    if prog == 'jtool2':
+        parser.add_option("", "--H",
+                          action="store_true",
+                          default=False,
+                          dest="opt_help",
+                          help="print jtool2 help info")
+
+    parser.add_option("-e", "--ent",
+                      action="store_true",
+                      default=False,
+                      dest="opt_e",
+                      help="print entitlements")
     parser.add_option("-f", "--opt_f", 
                       action="store_true",
                       default=False,
@@ -218,9 +255,13 @@ def generate_option_parser():
                       default=False,
                       dest="opt_S",
                       help="List Symbols (like NM)")
+    parser.add_option("-s", "--sig",
+                      action="store_true",
+                      default=False,
+                      dest="opt_s",
+                      help="print signature")
 
-
-    parser.add_option("", "--pages", 
+    parser.add_option("", "--pages",
                       action="store_true",
                       default=False,
                       dest="opt_pages",
@@ -249,21 +290,17 @@ def repl(m):
         num = int(m.group(1), 16)
         if num > 0x100000000:
             retVal = base_address + num - 0x100000000
-            return hex(retVal)
+            return hex(retVal).encode()
         else:
             retVal = base_address + num
             if retVal > 0x200000000:
                 retVal -= 0x100000000
-            return hex(retVal)
+            return hex(retVal).encode()
     except:
         return m.group()
-
-
-
 
 
 def isXcode():
     if "unknown" == os.environ.get("TERM", "unknown"):
         return True
     return False
-    
