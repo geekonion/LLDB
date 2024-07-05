@@ -2,7 +2,6 @@
 
 import lldb
 import os
-import re
 import shlex
 import optparse
 import subprocess
@@ -19,6 +18,7 @@ def makeSureEverythingIsOK(result, prog):
         # I'd expect jtool to be in /usr/local/bin/
         if "/usr/local/bin" not in os.environ["PATH"]:
             os.environ["PATH"] += os.pathsep + "/usr/local/bin/"
+
         if subprocess.call(["/usr/bin/which", prog], shell=False) != 0:
             result.SetError("Can't find {prog} in PATH or {prog} isn't installed "
                             "(http://www.newosxbook.com/tools/jtool.html), "
@@ -132,6 +132,7 @@ def handle_command(command, exe_ctx, result, prog):
         if module is not None:
             executablePath = module.GetFileSpec().fullpath
 
+    print('module path: {}'.format(executablePath))
     if addr is None:
         addr = module.GetObjectFileHeaderAddress()
 
@@ -282,22 +283,6 @@ def generate_option_parser(prog):
                       dest="debug",
                       help="Used for debugging the generated jtool script")
     return parser
-
-
-def repl(m):
-    global base_address
-    try:
-        num = int(m.group(1), 16)
-        if num > 0x100000000:
-            retVal = base_address + num - 0x100000000
-            return hex(retVal).encode()
-        else:
-            retVal = base_address + num
-            if retVal > 0x200000000:
-                retVal -= 0x100000000
-            return hex(retVal).encode()
-    except:
-        return m.group()
 
 
 def isXcode():

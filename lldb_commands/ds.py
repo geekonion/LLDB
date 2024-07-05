@@ -982,7 +982,7 @@ def getType(typeStr, count=None):
 
 
 def sys(debugger, command, exe_ctx, result, internal_dict):
-    search =  re.search('(?<=\$\().*(?=\))', command)
+    search = re.search('(?<=\$\().*(?=\))', command)
     if search:
         cleanCommand = search.group(0)
         res = lldb.SBCommandReturnObject()
@@ -1003,7 +1003,7 @@ def sys(debugger, command, exe_ctx, result, internal_dict):
     output = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=subprocess.PIPE, stdout=subprocess.PIPE, shell=True, env=my_env).communicate()
     retOutput = ''
     if output[1]:
-        retOutput += output[1]
+        retOutput += output[1].decode("utf-8")
     retOutput += output[0].decode("utf-8") 
     result.AppendMessage(retOutput)
 

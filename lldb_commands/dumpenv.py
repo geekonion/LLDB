@@ -31,7 +31,7 @@ def handle_command(debugger, command, exe_ctx, result, internal_dict):
   for (char **env = (char**)environ; *env != 0; env++)
   {
     char *cur = *env;
-    [retString appendString:[NSString stringWithUTF8String:cur]];
+    [retString appendString:(NSString *)[NSString stringWithUTF8String:cur]];
     [retString appendString:@"\n\n"];
   }
   retString;
