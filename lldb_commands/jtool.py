@@ -1,13 +1,116 @@
 
-
 import lldb
 import os
 import shlex
-import optparse
 import subprocess
 
 ds_jtool_dict = {}
 base_address = None
+
+
+def __lldb_init_module(debugger, internal_dict):
+    debugger.HandleCommand('command script add -f jtool.jtool jtool -h "wrapper for @Morpheus______\'s jtool"')
+    debugger.HandleCommand('command script add -f jtool.jtool2 jtool2 -h "wrapper for @Morpheus______\'s jtool2"')
+
+
+def jtool(debugger, command, exe_ctx, result, internal_dict):
+    """
+    Documentation for how to use jtool goes here
+    """
+    handle_command(command, exe_ctx, result, 'jtool')
+
+
+def jtool2(debugger, command, exe_ctx, result, internal_dict):
+    """
+    Documentation for how to use jtool2 goes here
+    """
+    handle_command(command, exe_ctx, result, 'jtool2')
+
+
+def handle_command(command, exe_ctx, result, prog):
+    if makeSureEverythingIsOK(result, prog):
+        return
+
+    is_xcode = isXcode()
+    target = exe_ctx.GetTarget()
+    args = shlex.split(command)
+    executablePath = None
+    module = None
+
+    if len(args) >= 1:
+        name_or_addr = None
+        for arg in args:
+            if not arg.startswith('-'):
+                if name_or_addr:
+                    result.SetError("more than one filepath were found")
+                    return
+                else:
+                    name_or_addr = arg
+
+        if name_or_addr:
+            module = target.module[name_or_addr]
+            if not module:
+                if name_or_addr.isdigit():
+                    address = int(name_or_addr)
+                else:
+                    try:
+                        address = int(name_or_addr, 16)
+                    except:
+                        result.SetError("\"{}\" not found".format(name_or_addr))
+                        return
+
+                addr = target.ResolveLoadAddress(address)
+                module = addr.GetModule()
+                if not module or not module.IsValid():
+                    result.SetError("Unable to find module for address {:#x}".format(address))
+                    return
+
+    cputype_str = None
+    if module:
+        executablePath = module.GetFileSpec().fullpath
+
+        result.AppendMessage('module path: {}\n'.format(executablePath))
+
+        cputype_str = get_cputype_string(target, module)
+        if cputype_str is None:
+            result.SetError("Unable to parse cputype, tell Derek about this")
+            return
+
+    proc_args = []
+    if not is_xcode:
+        proc_args.append("JCOLOR=1")
+
+    global ds_jtool_dict
+    ds_jtool_path = ds_jtool_dict[prog]
+    proc_args.append(ds_jtool_path)
+    if len(args) > 0:
+        if prog == 'jtool' and cputype_str:
+            proc_args.append("-arch")
+            proc_args.append(cputype_str)
+
+        if executablePath:
+            args[-1] = "\"{}\"".format(executablePath)
+
+        proc_args.extend(args)
+
+    if len(proc_args) > 1:
+        cmd = ' '.join(proc_args)
+    else:
+        cmd = proc_args[0]
+
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    output, error = p.communicate()
+    code = p.wait()
+
+    result.AppendMessage(output.decode())
+    if len(error) > 0:
+        result.SetError(error.decode())
+
+
+def isXcode():
+    if "unknown" == os.environ.get("TERM", "unknown"):
+        return True
+    return False
 
 
 def makeSureEverythingIsOK(result, prog):
@@ -38,9 +141,9 @@ def makeSureEverythingIsOK(result, prog):
         return 0
 
 
-def get_cputype_string(target, addr):
+def get_cputype_string(target, module):
     global base_address
-    header_addr = addr.GetModule().GetObjectFileHeaderAddress().GetLoadAddress(target)
+    header_addr = module.GetObjectFileHeaderAddress().GetLoadAddress(target)
 
     base_address = header_addr
     # magic at +0, cputype at +4
@@ -60,232 +163,3 @@ def get_cputype_string(target, addr):
     else:
         print("Unknown cputype: {}", format(cputype))
         return None
-
-
-def __lldb_init_module(debugger, internal_dict):
-    debugger.HandleCommand('command script add -f jtool.jtool jtool -h "wrapper for @Morpheus______\'s jtool"')
-    debugger.HandleCommand('command script add -f jtool.jtool2 jtool2 -h "wrapper for @Morpheus______\'s jtool2"')
-
-
-def jtool(debugger, command, exe_ctx, result, internal_dict):
-    """
-    Documentation for how to use jtool goes here
-    """
-    handle_command(command, exe_ctx, result, 'jtool')
-
-
-def jtool2(debugger, command, exe_ctx, result, internal_dict):
-    """
-    Documentation for how to use jtool2 goes here
-    """
-    handle_command(command, exe_ctx, result, 'jtool2')
-
-
-def handle_command(command, exe_ctx, result, prog):
-    if makeSureEverythingIsOK(result, prog):
-        return
-
-    target = exe_ctx.GetTarget()
-    command_args = shlex.split(command, posix=False)
-    parser = generate_option_parser(prog)
-    try:
-        (options, args) = parser.parse_args(command_args)
-    except:
-        result.SetError(parser.usage)
-        return
-
-    opts = generateOptionArgsFromOptions(options, prog)
-    executablePath = None
-    module = None
-    addr = None
-    # No args default to main executable
-    if len(args) == 0:
-        executablePath = target.GetExecutable().fullpath
-        module = target.module[target.GetExecutable().fullpath]
-        if len(opts) > 0:
-            result.AppendMessage("Inspecting main executable, {}{}{}".format("" if isXcode() else "\033[36m", module.GetFileSpec().basename, "" if isXcode() else "\033[0m"))
-
-    if len(args) >= 1:
-        module = target.module[args[0]]
-        if module is None:
-            # Did they pass in a hex/int value?
-            try:
-                address = int(args[0])
-            except:
-
-                #  Hex didn't work, just try an int
-                try:
-                    address = int(args[0], 16)
-                except:
-                    result.SetError("Unable to find module \"{}\", use \"image list -f ModuleName\"".format(args[0]))
-                    return 
-
-            addr = target.ResolveLoadAddress(address)
-            if module is None:
-                module = addr.GetModule()
-                result.AppendMessage("\"{}\" found in {}{}{}".format(args[0], "" if isXcode() else "\033[36m", module.GetFileSpec().basename, "" if isXcode() else "\033[0m"))
-
-            if addr.module.IsValid() == False:
-                result.SetError("Unable to find module for address {}".format(hex(address)))
-                return
-
-        if module is not None:
-            executablePath = module.GetFileSpec().fullpath
-
-    print('module path: {}'.format(executablePath))
-    if addr is None:
-        addr = module.GetObjectFileHeaderAddress()
-
-    cputype_str = get_cputype_string(target, addr)
-    if cputype_str is None:
-        result.SetError("Unable to parse cputype, tell Derek about this")
-        return
-
-    proc_args = []
-    if not isXcode():
-        proc_args.append("JCOLOR=1")
-
-    global ds_jtool_dict
-    ds_jtool_path = ds_jtool_dict[prog]
-    proc_args.append(ds_jtool_path)
-    if len(opts) > 0:
-        if prog == 'jtool':
-            proc_args.append("-arch")
-            proc_args.append(cputype_str)
-        proc_args.extend(opts)
-        proc_args.append("\"{}\"".format(executablePath))
-
-    if options.debug:
-        # print (proc_args)
-        print(" ".join(proc_args))
-
-    cmd = None
-    if len(proc_args) > 1:
-        cmd = ' '.join(proc_args)
-    else:
-        cmd = proc_args[0]
-
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    output, error = p.communicate()
-    code = p.wait()
-
-    result.AppendMessage(output.decode())
-    if len(error) > 0:
-        result.SetError(error.decode())
-
-
-def generateOptionArgsFromOptions(options, prog):
-    retOpts = []
-    if options.opt_h:
-        retOpts.append("-h")
-
-    if prog == 'jtool2':
-        if options.opt_help:
-            retOpts.append("--help")
-
-    if options.opt_e:
-        retOpts.append("--ent")
-
-    if options.opt_f:
-        retOpts.append("-f")
-
-    if options.opt_l:
-        retOpts.append("-l")
-
-    if options.opt_L:
-        retOpts.append("-L")
-
-    if options.opt_pages:
-        retOpts.append("--pages")
-
-    if options.opt_S:
-        retOpts.append("-S")
-
-    if options.opt_s:
-        retOpts.append("--sig")
-
-    # if options.opt_bind:
-    #     retOpts.append("-bind")
-
-    return retOpts
-
-
-def generate_option_parser(prog):
-    usage = "usage: %prog [options]"
-    parser = optparse.OptionParser(usage=usage, prog=prog)
-    # parser.add_option("-m", 
-    #                   action="store_true",
-    #                   default=None,
-    #                   dest="module",
-    #                   help="This is a placeholder option to show you how to use options with strings")
-    parser.add_option("", "--h",
-                      action="store_true",
-                      default=False,
-                      dest="opt_h",
-                      help="print header (ELF or Mach-O)")
-
-    if prog == 'jtool2':
-        parser.add_option("", "--H",
-                          action="store_true",
-                          default=False,
-                          dest="opt_help",
-                          help="print jtool2 help info")
-
-    parser.add_option("-e", "--ent",
-                      action="store_true",
-                      default=False,
-                      dest="opt_e",
-                      help="print entitlements")
-    parser.add_option("-f", "--opt_f", 
-                      action="store_true",
-                      default=False,
-                      dest="opt_f",
-                      help="print fat header")
-    parser.add_option("-l", "--opt_l",
-                      action="store_true",
-                      default=False,
-                      dest="opt_l",
-                      help="List sections/commands in binary")
-    parser.add_option("-L", "--opt_L", 
-                      action="store_true",
-                      default=False,
-                      dest="opt_L",
-                      help="List shared libraries used (like LDD)")
-    parser.add_option("-S", "--opt_S", 
-                      action="store_true",
-                      default=False,
-                      dest="opt_S",
-                      help="List Symbols (like NM)")
-    parser.add_option("-s", "--sig",
-                      action="store_true",
-                      default=False,
-                      dest="opt_s",
-                      help="print signature")
-
-    parser.add_option("", "--pages",
-                      action="store_true",
-                      default=False,
-                      dest="opt_pages",
-                      help="Show file page map (similar to pagestuff(1))")
-
-    # *********************************************************************
-    # dyldinfo Compatible Options:
-    # *********************************************************************
-    # parser.add_option("", "--bind", 
-    #                   action="store_true",
-    #                   default=False,
-    #                   dest="opt_bind",
-    #                   help="print addresses dyld will set based on symbolic lookups")
-
-    parser.add_option("-G", "--debug", 
-                      action="store_true",
-                      default=False,
-                      dest="debug",
-                      help="Used for debugging the generated jtool script")
-    return parser
-
-
-def isXcode():
-    if "unknown" == os.environ.get("TERM", "unknown"):
-        return True
-    return False
