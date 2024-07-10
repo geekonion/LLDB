@@ -54,7 +54,7 @@ def handle_command(debugger, command, exe_ctx, result, internal_dict):
 
     otoolCommand = '/usr/bin/otool -tv "{}"'.format(executablePath)
     output = subprocess.Popen(otoolCommand, stdin=subprocess.PIPE, stderr=subprocess.PIPE, stdout=subprocess.PIPE, shell=True).communicate()[0]
-    matches = re.findall(".*rip.*\n\w+", output)
+    matches = re.findall(".*rip.*\n\w+", output.decode())
     regex = re.compile('(?P<initial>\w+)?\t\w+\w.*[^\*](?P<offset>\-?0x\w+).*\n(?P<addr>\w+)')
 
     for i, m in enumerate(matches):
