@@ -40,17 +40,17 @@ def __lldb_init_module(debugger, internal_dict):
 
 def genExpressionOptions(useSwift=False, ignoreBreakpoints=False, useID=True):
     options = lldb.SBExpressionOptions()
-    options.SetIgnoreBreakpoints(ignoreBreakpoints);
-    options.SetTrapExceptions(False);
-    options.SetFetchDynamicValue(lldb.eDynamicCanRunTarget);
-    options.SetTimeoutInMicroSeconds (30*1000*1000) # 30 second timeout
-    options.SetTryAllThreads (True)
+    options.SetIgnoreBreakpoints(ignoreBreakpoints)
+    options.SetTrapExceptions(False)
+    options.SetFetchDynamicValue(lldb.eDynamicCanRunTarget)
+    options.SetTimeoutInMicroSeconds(30*1000*1000)  # 30 second timeout
+    options.SetTryAllThreads(True)
     options.SetUnwindOnError(True)
     options.SetGenerateDebugInfo(True)
     if useSwift:
-        options.SetLanguage (lldb.eLanguageTypeSwift)
+        options.SetLanguage(lldb.eLanguageTypeSwift)
     else:
-        options.SetLanguage (lldb.eLanguageTypeObjC_plus_plus)
+        options.SetLanguage(lldb.eLanguageTypeObjC_plus_plus)
     options.SetCoerceResultToId(useID)
     return options
 
