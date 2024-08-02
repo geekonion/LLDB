@@ -1,16 +1,16 @@
-
+# -*- coding: UTF-8 -*-
 
 import lldb
-import os
 import shlex
 import optparse
 
+
 def __lldb_init_module(debugger, internal_dict):
-    debugger.HandleCommand(
-    'command script add -f fileoffsetbreakpoint.handle_command lbr')
+    debugger.HandleCommand('command script add -f fileoffsetbreakpoint.handle_command lbr')
+
 
 def handle_command(debugger, command, exe_ctx, result, internal_dict):
-    '''
+    """
     Creates a breakpoint on the fileoffset of a module and resolves 
     to the load address in memory. 
 
@@ -18,7 +18,7 @@ def handle_command(debugger, command, exe_ctx, result, internal_dict):
     i.e. lbr UIKit 0x12343
 
     Cheers
-    '''
+    """
 
     command_args = shlex.split(command, posix=False)
     parser = generate_option_parser()
@@ -35,7 +35,7 @@ def handle_command(debugger, command, exe_ctx, result, internal_dict):
     target = exe_ctx.target
     module = target.module[args[0]]
     try: 
-        offset = long(args[1], 16)
+        offset = int(args[1], 16)
     except:
         result.SetError('Second argument needs to a number')
         return 
@@ -50,12 +50,12 @@ def handle_command(debugger, command, exe_ctx, result, internal_dict):
     if addr.symbol:
         name = addr.symbol.name
         loadAddr = hex(addr.GetLoadAddress(target))
-        result.AppendMessage('breakpoint created, {} {}'.format(loadAddr, name))
+        result.AppendMessage('breakpoint {} created, {} {}'.format(breakpoint.GetID(), loadAddr, name))
 
 
 def generate_option_parser():
     usage = handle_command.__doc__
-    parser = optparse.OptionParser(usage=usage, prog="fileoffsetbreakpoint")
+    parser = optparse.OptionParser(usage=usage, prog="lbr")
     parser.add_option("-m", "--module",
                       action="store",
                       default=None,
@@ -67,4 +67,3 @@ def generate_option_parser():
                       dest="store_true",
                       help="This is a placeholder option to show you how to use options with bools")
     return parser
-    
