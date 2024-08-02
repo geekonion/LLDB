@@ -50,6 +50,16 @@ def handle_command(command, exe_ctx, result, prog):
         if name_or_addr:
             module = target.module[name_or_addr]
             if not module:
+                for tmp_module in target.module_iter():
+                    module_file_spec = tmp_module.GetFileSpec()
+                    module_name = module_file_spec.GetFilename()
+
+                    dylib_name = name_or_addr + '.dylib'
+                    if name_or_addr == module_name or dylib_name == module_name:
+                        module = tmp_module
+                        break
+
+            if not module:
                 if name_or_addr.isdigit():
                     address = int(name_or_addr)
                 else:
