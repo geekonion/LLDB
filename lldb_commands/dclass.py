@@ -329,7 +329,7 @@ def generate_class_dump(target, options, clean_command=None):
 def generate_module_search_sections_string(module_name, target, useProtocol=False):
     module = target.FindModule(lldb.SBFileSpec(module_name))
     if not module.IsValid():
-        result.SetError(
+        print(
             "Unable to open module name '{}', to see list of images use 'image list -b'".format(module_name))
         return
 
@@ -512,7 +512,7 @@ def generate_header_script(options, class_to_generate_header):
     
     for (int i = 0; i < classCount; i++) {
       Method m = methods[i];
-      NSString *methodName = NSStringFromSelector((char *)method_getName(m));
+      NSString *methodName = NSStringFromSelector((SEL)method_getName(m));
       if ([blackListMethodNames containsObject:methodName]) {
         continue;
       }
@@ -775,7 +775,7 @@ def generate_module_header_script(options, modulePath):
       
       for (int i = 0; i < classCount; i++) {
         Method m = methods[i];
-        NSString *methodName = NSStringFromSelector((char *)method_getName(m));
+        NSString *methodName = NSStringFromSelector((SEL)method_getName(m));
         if ([blackListMethodNames containsObject:methodName]) {
           continue;
         }
